@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">StrixionAI</string>
+    <string name="image_desc">Захваченное изображение</string>
+    <string name="scan_button_text">Сканировать</string>
+    <string name="confirm_button_text">Подтвердить</string>
+    <string name="close_button_text">Закрыть</string>
+
+
+</resources>

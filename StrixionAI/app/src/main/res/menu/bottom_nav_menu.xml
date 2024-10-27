@@ -1,0 +1,11 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/navigation_scanner"
+        android:title="Сканирование" />
+    <item
+        android:id="@+id/navigation_graphs"
+        android:title="Графики" />
+    <item
+        android:id="@+id/navigation_profile"
+        android:title="Профиль" />
+</menu>
