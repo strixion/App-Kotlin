@@ -1,44 +1,50 @@
 package com.example.app
-import android.widget.Button
+import android.widget.Toast
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Environment
+import android.util.Log
 import android.view.View
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.LifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.Fragment
 import com.example.app.databinding.ActivityCameraFragmentBinding
-
+import java.io.File
+import android.media.MediaScannerConnection
+import java.text.SimpleDateFormat
+import java.util.Locale
+import android.net.Uri
 class CameraFragment : Fragment(R.layout.activity_camera_fragment) {
 
     private var _binding: ActivityCameraFragmentBinding? = null
     private val binding get() = _binding!!
 
-    // Код запроса разрешения
     private val CAMERA_PERMISSION_REQUEST_CODE = 1001
+    private var imageCapture: ImageCapture? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val backtoMenu = view.findViewById<Button>(R.id.back_to_menu_camera)
-        backtoMenu.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.fragmentContainer, FirstFragment())
-                .commit()
-        }
-        // Инициализация ViewBinding
+
         _binding = ActivityCameraFragmentBinding.bind(view)
 
-        // Проверяем разрешение на использование камеры
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {
-            // Разрешение предоставлено, запускаем камеру
             startCamera()
         } else {
-            // Разрешение не предоставлено, запрашиваем его
             requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
+        }
+
+        binding.button3.setOnClickListener {
+            takePhoto()
         }
     }
 
@@ -46,55 +52,111 @@ class CameraFragment : Fragment(R.layout.activity_camera_fragment) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
 
         cameraProviderFuture.addListener({
-            // Получаем объект ProcessCameraProvider
             val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build()
 
-            // Настройка камеры
-            val preview = Preview.Builder()
-                .build()
-
-            // Устанавливаем PreviewView для отображения видеопотока
             preview.setSurfaceProvider(binding.previewView.surfaceProvider)
 
-            // Выбираем камеру (текущая фронтальная камера)
-            val cameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-                .build()
+            imageCapture = ImageCapture.Builder().build()
+
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
             try {
-                // Отменяем все предыдущие камеры
                 cameraProvider.unbindAll()
-
-                // Биндим камеру для отображения видеопотока
                 cameraProvider.bindToLifecycle(
-                    this as LifecycleOwner, cameraSelector, preview
+                    this, cameraSelector, preview, imageCapture
                 )
-
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("CameraFragment", "Ошибка запуска камеры: ${e.message}", e)
             }
 
         }, ContextCompat.getMainExecutor(requireContext()))
     }
 
+    private fun takePhoto() {
+        val imageCapture = imageCapture ?: return
+
+        val photoFile = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+            "captured_image.png"
+        )
+
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(requireContext()),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    MediaScannerConnection.scanFile(
+                        requireContext(),
+                        arrayOf(photoFile.absolutePath),
+                        arrayOf("image/png"),
+                        null
+                    )
+                    Toast.makeText(requireContext(), "Фотография сохранена", Toast.LENGTH_SHORT).show()
+
+                    // Запускаем распознавание текста
+                    processImageForText(photoFile)
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e("CameraFragment", "Ошибка при сохранении фото: ${exception.message}", exception)
+                    Toast.makeText(requireContext(), "Ошибка при съемке", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+
+
+
+    private fun processImageForText(photoFile: File) {
+        val image = InputImage.fromFilePath(requireContext(), Uri.fromFile(photoFile))
+
+        // Создаем распознаватель текста с поддержкой русского языка
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val recognizedText = visionText.text
+                showTextInFragment(recognizedText)
+            }
+            .addOnFailureListener { e ->
+                Log.e("CameraFragment", "Ошибка распознавания текста: ${e.message}", e)
+                Toast.makeText(requireContext(), "Ошибка распознавания текста", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+
+    private fun showTextInFragment(text: String) {
+        val bundle = Bundle()
+        bundle.putString("recognizedText", text)
+
+        val textFragment = TextDisplayFragment()
+        textFragment.arguments = bundle
+
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.fragmentContainer, textFragment)
+            .addToBackStack(null)
+            .commit()
+    }
+
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        // Проверяем результат запроса разрешения
         if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Разрешение получено, запускаем камеру
                 startCamera()
             } else {
-                // Разрешение не получено
-                // Можно отобразить сообщение или уведомление
-                // Например, показать пользователю уведомление о необходимости разрешений
+                Toast.makeText(requireContext(), "Требуется разрешение на камеру", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        _binding = null // Очистка биндинга при уничтожении фрагмента
+        _binding = null
     }
 }
