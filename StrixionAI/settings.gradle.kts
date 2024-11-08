@@ -19,5 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "StrixionAI"
+rootProject.name = "APP"
 include(":app")
+ 
